@@ -49,6 +49,14 @@ func (redisDB *RedisDB) connect() redis.Conn {
 	return c
 }
 
+// 查看redis信息
+func (redisDB *RedisDB) Info() (reply interface{}, err error) {
+	c := redisDB.connect()
+	defer c.Close()
+	reply, err = c.Do("info")
+	return
+}
+
 // Set 存储String型数据
 func (redisDB *RedisDB) Set(value ...interface{}) (reply interface{}, err error) {
 	c := redisDB.connect()
