@@ -1,7 +1,10 @@
 package database
 
 import (
+	"time"
+
 	"github.com/garyburd/redigo/redis"
+	"github.com/zlt-com/go-config"
 	"github.com/zlt-com/go-logger"
 )
 
@@ -10,9 +13,32 @@ type RedisDB struct {
 	DBNum int
 }
 
+// 初始化redis
+func initRedis() {
+
+	//初始化redis
+	redisClient = &redis.Pool{
+		MaxIdle:     2,
+		MaxActive:   8,
+		IdleTimeout: 180 * time.Second,
+		Dial: func() (redis.Conn, error) {
+			c, err := redis.Dial(
+				config.Config.RedisType,
+				config.Config.RedisHost,
+				redis.DialPassword(config.Config.RedisPass),
+			)
+			if err != nil {
+				logger.Error(err.Error())
+				return nil, err
+			}
+			// 选择CacheDB
+			// c.Do("SELECT", 1)
+			return c, nil
+		},
+	}
+}
+
 var (
-	// RedisOauth 认证服务数据库
-	RedisOauth  = RedisDB{1}
 	redisClient *redis.Pool
 )
 
@@ -24,47 +50,48 @@ func (redisDB *RedisDB) connect() redis.Conn {
 }
 
 // Set 存储String型数据
-func (redisDB *RedisDB) Set(value ...interface{}) {
+func (redisDB *RedisDB) Set(value ...interface{}) (reply interface{}, err error) {
 	c := redisDB.connect()
 	defer c.Close()
-	_, err := c.Do("set", value...)
+	reply, err = c.Do("set", value...)
 	if err != nil {
 		logger.Error("redis.CacheDB set error", err, value)
 	}
+	return
 }
 
 // Psetex 存储String型数据
-func (redisDB *RedisDB) Psetex(value ...interface{}) {
+func (redisDB *RedisDB) Psetex(value ...interface{}) (reply interface{}, err error) {
 	c := redisDB.connect()
 	defer c.Close()
-	_, err := c.Do("psetex", value...)
+	reply, err = c.Do("psetex", value...)
 	if err != nil {
 		logger.Error("redis.CacheDB Psetex error", err, value)
 	}
+	return
 }
 
 // Get 获取String型数据
-func (redisDB *RedisDB) Get(key string) interface{} {
+func (redisDB *RedisDB) Get(key string) (reply interface{}, err error) {
 	c := redisDB.connect()
 	defer c.Close()
-	result, err := c.Do("get", key)
+	reply, err = c.Do("get", key)
 	if err != nil {
 		logger.Error("redis.CacheDB Get error", err, key)
-		return nil
 	}
-	return result
+	return
 }
 
 // Del 删除key
-func (redisDB *RedisDB) Del(key string) interface{} {
+func (redisDB *RedisDB) Del(key string) (reply interface{}, err error) {
 	c := redisDB.connect()
 	defer c.Close()
-	result, err := c.Do("del", key)
+	reply, err = c.Do("del", key)
 	if err != nil {
 		logger.Error("redis.CacheDB Del error", err, key)
-		return nil
+		return
 	}
-	return result
+	return
 }
 
 // String 转换redis数据为字符串型，默认是uint8数组
