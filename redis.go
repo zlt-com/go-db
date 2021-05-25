@@ -164,12 +164,12 @@ func (redisDB *RedisDB) Hdel(key string, field interface{}) error {
 func (redisDB *RedisDB) Hexists(key, field interface{}) (has bool, err error) {
 	c := redisDB.connect()
 	defer c.Close()
-	v, err := c.Do("hexists", key, field)
+	has, err = redis.Bool(c.Do("hexists", key, field))
 	if err != nil {
 		logger.Error("redis.CacheDB hexists error", err, key, field)
 	}
 
-	return redisDB.Bool(v), err
+	return
 }
 
 // Hsetappend 存储Hash型数据，把字符串用逗号分割
@@ -322,36 +322,36 @@ func (redisDB *RedisDB) Zadd(key string, sort int, value interface{}) (err error
 }
 
 // Zcard 获取sortset型数据数量
-func (redisDB *RedisDB) Zcard(key string) int {
+func (redisDB *RedisDB) Zcard(key string) (count int, err error) {
 	c := redisDB.connect()
 	defer c.Close()
-	count, err := redis.Int(c.Do("zcard", key))
+	count, err = redis.Int(c.Do("zcard", key))
 	if err != nil {
 		logger.Error("redis.CacheDB Zcard failed:", err, key)
 	}
-	return count
+	return
 }
 
 // Zrange 获取sortset型数据
-func (redisDB *RedisDB) Zrange(key string, start, end int) []interface{} {
+func (redisDB *RedisDB) Zrange(key string, start, end interface{}) ([]interface{}, error) {
 	c := redisDB.connect()
 	defer c.Close()
-	values, err := redis.Values(c.Do("zrange", key, start, end))
+	values, err := redis.Values(c.Do("zrange", key, start, end, " WITHSCORES"))
 	if err != nil {
 		logger.Error("redis.CacheDB zrange failed:", err, key, start, end)
 	}
-	return values
+	return values, err
 }
 
 // Zrevrange 获取sortset型数据，从大到小
-func (redisDB *RedisDB) Zrevrange(key string, start, end int) []interface{} {
+func (redisDB *RedisDB) Zrevrange(key string, start, end interface{}) ([]interface{}, error) {
 	c := redisDB.connect()
 	defer c.Close()
 	values, err := redis.Values(c.Do("zrevrange", key, start, end))
 	if err != nil {
 		logger.Error("redis.CacheDB Zrevrange failed:", err, key, start, end)
 	}
-	return values
+	return values, err
 }
 
 // ZrevrangeStrings 获取sortset型数据，从大到小，转化成字符串
@@ -502,4 +502,15 @@ func (redisDB *RedisDB) Expire(key string, time int64) {
 	if err != nil {
 		logger.Error("redis.CacheDB Expire failed:", err, key)
 	}
+}
+
+// EXISTS key 是否存在
+func (redisDB *RedisDB) Exists(key string) (has bool) {
+	c := redisDB.connect()
+	defer c.Close()
+	has, err := redis.Bool(c.Do("Exists", key))
+	if err != nil {
+		logger.Error("redis.CacheDB Expire failed:", err, key)
+	}
+	return
 }
