@@ -87,7 +87,7 @@ func (redisDB *RedisDB) Psetex(value ...interface{}) (reply interface{}, err err
 func (redisDB *RedisDB) Get(key string) (reply interface{}, err error) {
 	c := redisDB.connect()
 	defer c.Close()
-	reply, err = c.Do("get", key)
+	reply, err = redis.String(c.Do("get", key))
 	if err != nil {
 		logger.Error("redis.CacheDB Get error", err, key)
 	}
@@ -223,13 +223,14 @@ func (redisDB *RedisDB) Hgetall(key string) []interface{} {
 }
 
 // Hmset 批量存储Hash型数据
-func (redisDB *RedisDB) Hmset(field ...interface{}) {
+func (redisDB *RedisDB) Hmset(field ...interface{}) error {
 	c := redisDB.connect()
 	defer c.Close()
 	_, err := c.Do("hmset", field...)
 	if err != nil {
 		logger.Error("redis.CacheDB Hmset failed:", err, field)
 	}
+	return err
 }
 
 // Hkeys 获取Hash型数据所有field
@@ -505,10 +506,10 @@ func (redisDB *RedisDB) Expire(key string, time int64) {
 }
 
 // EXISTS key 是否存在
-func (redisDB *RedisDB) Exists(key string) (has bool) {
+func (redisDB *RedisDB) Exists(key string) (has bool, err error) {
 	c := redisDB.connect()
 	defer c.Close()
-	has, err := redis.Bool(c.Do("Exists", key))
+	has, err = redis.Bool(c.Do("Exists", key))
 	if err != nil {
 		logger.Error("redis.CacheDB Expire failed:", err, key)
 	}
