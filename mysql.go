@@ -9,19 +9,23 @@ import (
 
 // Mysql 全局数据库实例
 var (
-	Mysql *gorm.DB
+	mysql *gorm.DB
 )
 
-func initMysql() {
+func initMysql() (mysql *gorm.DB, err error) {
 	//初始化Mysql
-	var err error
-	if Mysql, err = gorm.Open(config.Config.DBType, config.Config.DBSource); err != nil {
+	if mysql, err = gorm.Open(config.Config.DBType, config.Config.DBSource); err != nil {
 		// fmt.Println((err))
 		logger.Error(err)
+		return
 	}
-	Mysql.LogMode(config.Config.LogMode)
-	Mysql.SetLogger(&logger.MyLogger{})
-	Mysql.DB().SetMaxIdleConns(1)
-	Mysql.DB().SetMaxOpenConns(5)
+	mysql.LogMode(config.Config.LogMode)
+	mysql.SetLogger(&logger.MyLogger{})
+	mysql.DB().SetMaxIdleConns(1)
+	mysql.DB().SetMaxOpenConns(5)
+	return
+}
 
+func Mysql() *gorm.DB {
+	return mysql
 }

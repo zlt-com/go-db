@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/jinzhu/gorm"
 	"github.com/zlt-com/go-config"
 	"github.com/zlt-com/go-logger"
 )
@@ -13,13 +12,15 @@ import (
 // RedisDB redis 基础类
 type RedisDB struct {
 	DBNum int
+	conn  redis.Conn
 }
 
-var Redisdb *gorm.DB
+var (
+	redisClient *redis.Pool
+)
 
 // 初始化redis
 func initRedis() {
-
 	//初始化redis
 	redisClient = &redis.Pool{
 		MaxIdle:     2,
@@ -35,16 +36,28 @@ func initRedis() {
 				logger.Error(err.Error())
 				return nil, err
 			}
-			// 选择CacheDB
-			// c.Do("SELECT", 1)
+			// 选择默认连接
+			c.Do("SELECT", 0)
 			return c, nil
 		},
 	}
 }
 
-var (
-	redisClient *redis.Pool
-)
+//获取redis数据库连接
+//dbNum为选择的数据库号，redis默认有16个数据库
+func GetRedisConn(dbNum int) (redis.Conn, error) {
+	c := redisClient.Get()
+	_, err := c.Do("SELECT", dbNum)
+	return c, err
+}
+
+// 连接到Redis数据库
+// num 是数据库编号
+func NewRedisDB(num int) *RedisDB {
+	c := redisClient.Get()
+	c.Do("SELECT", num)
+	return &RedisDB{DBNum: num, conn: c}
+}
 
 // connect 连接到Redis数据库
 func (redisDB *RedisDB) connect() redis.Conn {

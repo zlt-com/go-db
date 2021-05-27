@@ -164,14 +164,8 @@ github.com/toolkits/file v0.0.0-20160325033739-a5b3c5147e07 h1:d/VUIMNTk65Xz69ht
 github.com/toolkits/file v0.0.0-20160325033739-a5b3c5147e07/go.mod h1:FbXpUxsx5in7z/OrWFDdhYetOy3/VGIJsVHN9G7RUPA=
 github.com/xuri/efp v0.0.0-20201016154823-031c29024257 h1:6ldmGEJXtsRMwdR2KuS3esk9wjVJNvgk05/YY2XmOj0=
 github.com/xuri/efp v0.0.0-20201016154823-031c29024257/go.mod h1:uBiSUepVYMhGTfDeBKKasV4GpgBlzJ46gXUBAqV8qLk=
-github.com/zlt-com/go-common v0.0.0-20210513085452-3c4f1661ab09 h1:YadMt+j8rROlc6BzeRd9xlgPlt3O+8LnMoradcY2vHU=
-github.com/zlt-com/go-common v0.0.0-20210513085452-3c4f1661ab09/go.mod h1:gBhe+T4B4JNksg4URB28zjUuAJamPTbKsw9omwzaZZA=
-github.com/zlt-com/go-config v0.0.0-20210513094338-cc0e72f6cfb4 h1:WS7QM5VmBV2fNZwetHkxcaCvcepCBLhpPckQHZ3Tm68=
-github.com/zlt-com/go-config v0.0.0-20210513094338-cc0e72f6cfb4/go.mod h1:dwJUVwKzdT3G1pC07gOfNFy05aoRJSh9f0VMxKGtIec=
 github.com/zlt-com/go-es v0.0.0-20210513094521-798a65e8b9fe h1:HCqu0RbRaxgp80aW7ZQi3jgYd7EksB1XLHB3ixiOfV4=
 github.com/zlt-com/go-es v0.0.0-20210513094521-798a65e8b9fe/go.mod h1:4fdDgVay1qLGfbZCjQtMNOOV/doADwvik22u52DZRQ4=
-github.com/zlt-com/go-logger v0.0.0-20210513095531-9e90dff15f9d h1:WKLwYXcgzS42YGwGZHrYDDprjXLN5PKjb1lUQyfDNPM=
-github.com/zlt-com/go-logger v0.0.0-20210513095531-9e90dff15f9d/go.mod h1:VUTou4lMWuig4+5JoN194yQ1iD+3QcpoKwW9v1htCOY=
 go.opencensus.io v0.20.1/go.mod h1:6WKK9ahsWS3RSO+PY9ZHZUfv2irvY6gN279GOPZjmmk=
 go.opencensus.io v0.23.0/go.mod h1:XItmlyltB5F7CS4xOC1DcqMoFqwtC6OG2xF7mCv7P7E=
 golang.org/x/crypto v0.0.0-20180904163835-0709b304e793/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
