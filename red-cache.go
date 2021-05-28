@@ -158,7 +158,9 @@ func (rc *RedCache) Select() (reply []interface{}, err error) {
 					for _, tv := range tag {
 						if tv == "MUILT_INDEX" {
 							// array := make([]interface{}, 0)
-							_, err = common.JSON2Object(indexValue[0].(string), &indexValue)
+							if _, err = common.JSON2Object(indexValue[0].(string), &indexValue); err != nil {
+								return nil, err
+							}
 						}
 					}
 				}
