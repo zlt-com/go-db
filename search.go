@@ -11,7 +11,8 @@ import (
 // Find Find
 func (m *Database) Find() (replys interface{}, count int, err error) {
 	if m.where == nil {
-		m.where = map[string]interface{}{}
+		// m.where = map[string]interface{}{}
+		m.where = make([]Condition, 0)
 	}
 
 	//反射数据模型，x为查询结果集
@@ -25,7 +26,7 @@ func (m *Database) Find() (replys interface{}, count int, err error) {
 
 	//使用缓存
 	if UseRedcache {
-		rcache := new(RedCache).Where(m.where).Limit(m.limit).Offset(m.offset).OrderBy(m.order).Model(m.model)
+		rcache := new(RedCache).Where(m.whereConditions...).Limit(m.limit).Offset(m.offset).OrderBy(m.order).Model(m.model)
 		// end := 1
 		// if m.offset != nil {
 		// 	end = m.offset.(int) + m.limit.(int)
@@ -43,8 +44,7 @@ func (m *Database) Find() (replys interface{}, count int, err error) {
 						// replys := []interface{}{}
 						replys := []reflect.Value{}
 						for _, v := range cacheValue {
-							// replys = append(replys, v.(string))
-							if _, err = common.JSON2Object(v.(string), &m.model); err != nil {
+							if err = common.Byte2Object(v.([]byte), &m.model); err != nil {
 								return nil, count, err
 							} else {
 								// n.Set(reflect.ValueOf(&model))
@@ -69,10 +69,14 @@ func (m *Database) Find() (replys interface{}, count int, err error) {
 
 // Count Count
 func (m *Database) Count() (count, cacheCount int, err error) {
-	rcache := new(RedCache).Model(m.model).Where(m.where)
+	rcache := new(RedCache).Model(m.model).Where(m.whereConditions...)
+	db := defaultDB
+	for _, where := range m.whereConditions {
+		db = db.Where(where.ToString(), where.Value)
+	}
 	if SyncCache, err = rcache.GetSyncStatus(); err == nil {
 		if !SyncCache[common.ReflectInterfaceName(m.model)] {
-			if err := defaultDB.Model(m.model).Where(m.where).Count(&count); err.Error != nil {
+			if err := db.Model(m.model).Count(&count); err.Error != nil {
 				fmt.Println(err.Error)
 				return 0, 0, err.Error
 			}
@@ -141,21 +145,15 @@ func (m *Database) Delete(u interface{}) (b bool, err error) {
 
 //从数据库查询
 func (m *Database) fromDB(x, slice reflect.Value, t reflect.Type) (interface{}, int, error) {
-	defaultDB = defaultDB.Where(m.where)
-	if m.order != nil {
-		defaultDB = defaultDB.Order(m.order)
-	}
-	if m.offset != nil {
-		defaultDB = defaultDB.Offset(m.offset)
-	}
-	if m.limit != nil {
-		defaultDB = defaultDB.Limit(m.limit)
+	db := defaultDB
+	for _, where := range m.whereConditions {
+		db = db.Where(where.ToString(), where.Value)
 	}
 	count := 0
-	if err := defaultDB.Model(m.model).Where(m.where).Count(&count); err.Error != nil {
+	if err := db.Model(m.model).Count(&count); err.Error != nil {
 		fmt.Println(err.Error)
 	}
-	if result := defaultDB.Find(x.Interface()); result.Error != nil {
+	if result := db.Order(m.order).Offset(m.offset).Limit(m.limit).Model(m.model).Find(x.Interface()); result.Error != nil {
 		return nil, 0, result.Error
 	} else {
 		//获得数据后反射返回结果

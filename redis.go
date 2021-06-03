@@ -12,7 +12,6 @@ import (
 // RedisDB redis 基础类
 type RedisDB struct {
 	DBNum int
-	conn  redis.Conn
 }
 
 var (
@@ -24,8 +23,9 @@ func initRedis() {
 	//初始化redis
 	redisClient = &redis.Pool{
 		MaxIdle:     2,
-		MaxActive:   8,
+		MaxActive:   16,
 		IdleTimeout: 180 * time.Second,
+		Wait:        true,
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial(
 				config.Config.RedisType,
@@ -45,24 +45,26 @@ func initRedis() {
 
 //获取redis数据库连接
 //dbNum为选择的数据库号，redis默认有16个数据库
-func GetRedisConn(dbNum int) (redis.Conn, error) {
-	c := redisClient.Get()
-	_, err := c.Do("SELECT", dbNum)
-	return c, err
+func GetRedisConn() redis.Conn {
+	return cc
 }
 
 // 连接到Redis数据库
 // num 是数据库编号
-func NewRedisDB(num int) *RedisDB {
-	c := redisClient.Get()
-	c.Do("SELECT", num)
-	return &RedisDB{DBNum: num, conn: c}
+func GetRedisDB() *RedisDB {
+	return &redisDb
 }
+
+var cc redis.Conn
 
 // connect 连接到Redis数据库
 func (redisDB *RedisDB) connect() redis.Conn {
+	// if cc == nil {
+	// 	cc = redisClient.Get()
+	// 	cc.Do("SELECT", redisDB.DBNum)
+	// }
 	c := redisClient.Get()
-	c.Do("SELECT", redisDB.DBNum)
+	// 	cc.Do("SELECT", redisDB.DBNum)
 	return c
 }
 
@@ -216,11 +218,20 @@ func (redisDB *RedisDB) Hmget(field ...interface{}) ([]interface{}, error) {
 	c := redisDB.connect()
 	defer c.Close()
 	result, err := redis.Values(c.Do("hmget", field...))
+	replys := make([]interface{}, 0)
+	for _, v := range result {
+		if bv, err := redis.Bytes(v, err); err != nil {
+			return nil, err
+		} else {
+			replys = append(replys, bv)
+		}
+
+	}
 	if err != nil {
 		logger.Error("redis.CacheDB Hmget failed:", err, field)
 		return nil, err
 	}
-	return result, err
+	return replys, err
 }
 
 // Hgetall 批量获取Hash型数据

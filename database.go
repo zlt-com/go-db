@@ -27,34 +27,67 @@ func Open(dbType []string) {
 }
 
 type Database struct {
-	order  interface{}
-	offset interface{}
-	limit  interface{}
-	model  interface{}
-	where  map[string]interface{}
+	order           interface{}
+	offset          interface{}
+	limit           interface{}
+	model           interface{}
+	where           interface{}
+	whereConditions []Condition
+}
+
+type Condition struct {
+	Key   string
+	Op    string
+	Value interface{}
+}
+
+func (ct *Condition) ToString() string {
+	return ct.Key + ct.Op + "?"
 }
 
 func (m *Database) Model(model interface{}) *Database {
-	m.model = model
-	return m
+	c := m.clone()
+	c.model = model
+	return c
 }
 
 func (m *Database) Order(order interface{}) *Database {
-	m.order = order
-	return m
+	c := m.clone()
+	c.order = order
+	return c
 }
 
 func (m *Database) Offset(offset interface{}) *Database {
-	m.offset = offset
-	return m
+	c := m.clone()
+	c.offset = offset
+	return c
 }
 
 func (m *Database) Limit(limit interface{}) *Database {
-	m.limit = limit
-	return m
+	c := m.clone()
+	c.limit = limit
+	return c
 }
 
-func (m *Database) Where(where map[string]interface{}) *Database {
-	m.where = where
-	return m
+func (m *Database) Where(where interface{}) *Database {
+	c := m.clone()
+	switch value := where.(type) {
+	case map[string]interface{}:
+		for key, val := range value {
+			c.whereConditions = append(c.whereConditions, Condition{Key: key, Op: "=", Value: val})
+		}
+	case []Condition:
+		c.whereConditions = value
+	}
+	return c
+}
+
+func (m *Database) clone() *Database {
+	return &Database{
+		order:  m.order,
+		offset: m.offset,
+		limit:  m.limit,
+		model:  m.model,
+		where:  m.where,
+	}
 }
