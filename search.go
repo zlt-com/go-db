@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/zlt-com/go-common"
 )
@@ -27,10 +28,6 @@ func (m *Database) Find() (replys interface{}, count int, err error) {
 	//使用缓存
 	if UseRedcache {
 		rcache := new(RedCache).Where(m.whereConditions...).Limit(m.limit).Offset(m.offset).OrderBy(m.order).Model(m.model)
-		// end := 1
-		// if m.offset != nil {
-		// 	end = m.offset.(int) + m.limit.(int)
-		// }
 		if count, cacheCount, err := m.Count(); err != nil {
 			return nil, count, err
 		} else {
@@ -69,10 +66,12 @@ func (m *Database) Find() (replys interface{}, count int, err error) {
 
 // Count Count
 func (m *Database) Count() (count, cacheCount int, err error) {
+	// return 1643372, 0, nil
 	rcache := new(RedCache).Model(m.model).Where(m.whereConditions...)
 	db := defaultDB
+	tableName := common.ReflectMethod(m.model, "TableName")[0].Interface().(string)
 	for _, where := range m.whereConditions {
-		db = db.Where(where.ToString(), where.Value)
+		db = db.Where(where.ToString(tableName), where.Value)
 	}
 	if SyncCache, err = rcache.GetSyncStatus(); err == nil {
 		if !SyncCache[common.ReflectInterfaceName(m.model)] {
@@ -145,16 +144,49 @@ func (m *Database) Delete(u interface{}) (b bool, err error) {
 
 //从数据库查询
 func (m *Database) fromDB(x, slice reflect.Value, t reflect.Type) (interface{}, int, error) {
+	defer timeMeasurement("fromDB", time.Now())
 	db := defaultDB
-	for _, where := range m.whereConditions {
-		db = db.Where(where.ToString(), where.Value)
-	}
+	tableName := common.ReflectMethod(m.model, "TableName")[0].Interface().(string)
+	// defer db.Close()
+	// for _, where := range m.whereConditions {
+	// 	db = db.Where(where.ToString(tableName), where.Value)
+	// }
 	count := 0
 	if err := db.Model(m.model).Count(&count); err.Error != nil {
 		fmt.Println(err.Error)
 	}
-	if result := db.Order(m.order).Offset(m.offset).Limit(m.limit).Model(m.model).Find(x.Interface()); result.Error != nil {
+	// ids := make([]interface{}, 0)
+
+	// db.Table(tableName).Select("id").Scan(ids)
+	// result := db.Order(m.order).Offset(m.offset).Limit(m.limit).Model(m.model).Select("id").Find(&ids)
+	// if result.Error != nil {
+	// 	fmt.Println(result.Error)
+	// }
+	// if result := db.Where(ids).Find(x.Interface()); result.Error != nil {
+	// tableName := common.ReflectInterfaceName(m.model)
+	joinSqlHeader := fmt.Sprintf("SELECT * FROM %s inner join (SELECT id FROM %s where 1=1 ", tableName, tableName)
+	joinSqlFooter := fmt.Sprintf(") b  on %s.id=b.id", tableName)
+	joinSqlContent := ""
+	whereSlice := make([]interface{}, 0)
+	for _, where := range m.whereConditions {
+		joinSqlContent += " and " + where.ToString(tableName)
+		whereSlice = append(whereSlice, where.Value)
+	}
+	joinSqlContent += " ORDER BY id desc "
+	if m.limit != nil {
+		joinSqlContent += fmt.Sprintf(" LIMIT %d ", m.limit)
+	}
+	if m.offset != nil {
+		joinSqlContent += fmt.Sprintf(" OFFSET %d ", m.offset)
+	}
+	joinSql := joinSqlHeader + joinSqlContent + joinSqlFooter
+	// ids := make([]int, 0)
+	// db.Order(m.order).Offset(m.offset).Limit(m.limit).Model(m.model).Select("id").Find(x.Interface()).Pluck("id", &ids)
+	// if result := db.Table(tableName).Select("*").Where("id in (?)", ids).Find(x.Interface()); result.Error != nil {
+	// if result := db.Table(tableName).Select("*").Joins(joinSql).Find(x.Interface()); result.Error != nil {
+	if result := db.Raw(joinSql, whereSlice...).Find(x.Interface()); result.Error != nil {
 		return nil, 0, result.Error
+
 	} else {
 		//获得数据后反射返回结果
 		if result.Value != nil {
@@ -176,6 +208,7 @@ func (m *Database) fromDB(x, slice reflect.Value, t reflect.Type) (interface{}, 
 
 //同步数据库与缓存数据
 func (m *Database) syncData(rcache *RedCache, x, slice reflect.Value, t reflect.Type) (interface{}, int, error) {
+	defer timeMeasurement("syncData", time.Now())
 	if dbValue, count, err := m.fromDB(x, slice, t); err == nil {
 		getValue := reflect.ValueOf(dbValue)
 		batchCacheCreateArray := []interface{}{}
@@ -193,4 +226,9 @@ func (m *Database) syncData(rcache *RedCache, x, slice reflect.Value, t reflect.
 	} else {
 		return nil, 0, err
 	}
+}
+
+func timeMeasurement(name string, start time.Time) {
+	// elapsed := time.Since(start)
+	// fmt.Println(name+"--Execution time: %s", elapsed)
 }

@@ -12,6 +12,7 @@ var defaultDB *gorm.DB
 
 func Open(dbType []string) {
 	if common.Contains("mysql", dbType) {
+		fmt.Println("初始化Mysql")
 		// 初始化Mysql
 		if db, err := initMysql(); err != nil {
 			fmt.Println(err)
@@ -20,7 +21,9 @@ func Open(dbType []string) {
 		}
 
 	}
+
 	if common.Contains("redis", dbType) {
+		fmt.Println("初始化redis")
 		//初始化redis
 		initRedis()
 	}
@@ -41,7 +44,15 @@ type Condition struct {
 	Value interface{}
 }
 
-func (ct *Condition) ToString() string {
+func (ct *Condition) ToString(tablename string) string {
+	// switch v := ct.Value.(type) {
+	// case string:
+	// 	return tablename + "." + ct.Key + ct.Op + "'" + v + "'"
+	// case int:
+	// 	return tablename + "." + ct.Key + ct.Op + strconv.Itoa(v)
+	// default:
+	// 	return ""
+	// }
 	return ct.Key + ct.Op + "?"
 }
 
@@ -84,10 +95,11 @@ func (m *Database) Where(where interface{}) *Database {
 
 func (m *Database) clone() *Database {
 	return &Database{
-		order:  m.order,
-		offset: m.offset,
-		limit:  m.limit,
-		model:  m.model,
-		where:  m.where,
+		order:           m.order,
+		offset:          m.offset,
+		limit:           m.limit,
+		model:           m.model,
+		where:           m.where,
+		whereConditions: m.whereConditions,
 	}
 }

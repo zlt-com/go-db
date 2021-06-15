@@ -2,6 +2,7 @@ package database
 
 import (
 	"bytes"
+	"sync"
 	"time"
 
 	"github.com/garyburd/redigo/redis"
@@ -22,10 +23,11 @@ var (
 func initRedis() {
 	//初始化redis
 	redisClient = &redis.Pool{
-		MaxIdle:     2,
-		MaxActive:   16,
-		IdleTimeout: 180 * time.Second,
-		Wait:        true,
+		MaxIdle:         4,
+		MaxActive:       16,
+		IdleTimeout:     3 * time.Second,
+		MaxConnLifetime: 3 * time.Second,
+		Wait:            true,
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial(
 				config.Config.RedisType,
@@ -43,29 +45,25 @@ func initRedis() {
 	}
 }
 
-//获取redis数据库连接
-//dbNum为选择的数据库号，redis默认有16个数据库
-func GetRedisConn() redis.Conn {
-	return cc
-}
-
 // 连接到Redis数据库
 // num 是数据库编号
 func GetRedisDB() *RedisDB {
 	return &redisDb
 }
 
-var cc redis.Conn
-
 // connect 连接到Redis数据库
-func (redisDB *RedisDB) connect() redis.Conn {
-	// if cc == nil {
-	// 	cc = redisClient.Get()
-	// 	cc.Do("SELECT", redisDB.DBNum)
-	// }
-	c := redisClient.Get()
-	// 	cc.Do("SELECT", redisDB.DBNum)
-	return c
+var lockdb sync.Mutex
+
+func (redisDB *RedisDB) connect() (c redis.Conn) {
+	lockdb.Lock()
+	for {
+		c = redisClient.Get()
+		switch c.(type) {
+		case redis.Conn:
+			lockdb.Unlock()
+			return
+		}
+	}
 }
 
 // 查看redis信息
@@ -82,7 +80,7 @@ func (redisDB *RedisDB) Set(value ...interface{}) (reply interface{}, err error)
 	defer c.Close()
 	reply, err = c.Do("set", value...)
 	if err != nil {
-		logger.Error("redis.CacheDB set error", err, value)
+		logger.Error("redis.CacheDB set error: ", err, value)
 	}
 	return
 }
@@ -93,7 +91,7 @@ func (redisDB *RedisDB) Psetex(value ...interface{}) (reply interface{}, err err
 	defer c.Close()
 	reply, err = c.Do("psetex", value...)
 	if err != nil {
-		logger.Error("redis.CacheDB Psetex error", err, value)
+		logger.Error("redis.CacheDB Psetex error: ", err, value)
 	}
 	return
 }
@@ -104,7 +102,7 @@ func (redisDB *RedisDB) Get(key string) (reply interface{}, err error) {
 	defer c.Close()
 	reply, err = redis.String(c.Do("get", key))
 	if err != nil {
-		logger.Error("redis.CacheDB Get error", err, key)
+		logger.Error("redis.CacheDB Get error: ", err, key)
 	}
 	return
 }
@@ -115,7 +113,7 @@ func (redisDB *RedisDB) Del(key string) (reply interface{}, err error) {
 	defer c.Close()
 	reply, err = c.Do("del", key)
 	if err != nil {
-		logger.Error("redis.CacheDB Del error", err, key)
+		logger.Error("redis.CacheDB Del error: ", err, key)
 		return
 	}
 	return
@@ -125,7 +123,7 @@ func (redisDB *RedisDB) Del(key string) (reply interface{}, err error) {
 func (redisDB *RedisDB) String(arg interface{}) string {
 	value, err := redis.String(arg, nil)
 	if err != nil {
-		logger.Error("redis.CacheDB Strings failed:", err, arg)
+		logger.Error("redis.CacheDB Strings failed: ", err, arg)
 		return "error string"
 	}
 	return value
@@ -137,7 +135,7 @@ func (redisDB *RedisDB) DelKey(key string) {
 	defer c.Close()
 	_, err := c.Do("del", key)
 	if err != nil {
-		logger.Error("redis.CacheDB DelKey error", key, err)
+		logger.Error("redis.CacheDB DelKey error: ", key, err)
 	}
 }
 
@@ -147,7 +145,7 @@ func (redisDB *RedisDB) Hget(key string, value interface{}) (reply interface{}, 
 	defer c.Close()
 	reply, err = c.Do("hget", key, value)
 	if err != nil {
-		logger.Error("redis.CacheDB hget error ", err, key, value)
+		logger.Error("redis.CacheDB hget error: ", err, key)
 		return
 	}
 	return
@@ -159,7 +157,7 @@ func (redisDB *RedisDB) Hset(key string, field, value interface{}) error {
 	defer c.Close()
 	_, err := c.Do("hset", key, field, value)
 	if err != nil {
-		logger.Error("redis.CacheDB hset error ", err, key, field, value)
+		logger.Error("redis.CacheDB hset error: ", err, key, field)
 	}
 	return err
 }
@@ -170,7 +168,7 @@ func (redisDB *RedisDB) Hdel(key string, field interface{}) error {
 	defer c.Close()
 	_, err := c.Do("hdel", key, field)
 	if err != nil {
-		logger.Error("redis.CacheDB hdel error", err, key, field)
+		logger.Error("redis.CacheDB hdel error: ", err, key, field)
 	}
 	return err
 }
@@ -181,7 +179,7 @@ func (redisDB *RedisDB) Hexists(key, field interface{}) (has bool, err error) {
 	defer c.Close()
 	has, err = redis.Bool(c.Do("hexists", key, field))
 	if err != nil {
-		logger.Error("redis.CacheDB hexists error", err, key, field)
+		logger.Error("redis.CacheDB hexists error: ", err, key, field)
 	}
 
 	return
@@ -202,12 +200,12 @@ func (redisDB *RedisDB) Hsetappend(key string, field string, value string) {
 
 		_, err := c.Do("hset", key, field, value+","+buf.String()) //写
 		if err != nil {
-			logger.Error("redis.CacheDB Hsetappend failed:", err)
+			logger.Error("redis.CacheDB Hsetappend failed: ", err)
 		}
 	} else {
 		_, err := c.Do("hset", key, field, value) //写
 		if err != nil {
-			logger.Error("redis.CacheDB set failed:", err)
+			logger.Error("redis.CacheDB set failed: ", err)
 		}
 	}
 
@@ -228,7 +226,7 @@ func (redisDB *RedisDB) Hmget(field ...interface{}) ([]interface{}, error) {
 
 	}
 	if err != nil {
-		logger.Error("redis.CacheDB Hmget failed:", err, field)
+		logger.Error("redis.CacheDB Hmget failed: ", err, field)
 		return nil, err
 	}
 	return replys, err
@@ -240,7 +238,7 @@ func (redisDB *RedisDB) Hgetall(key string) []interface{} {
 	defer c.Close()
 	result, err := redis.Values(c.Do("HVALS", key))
 	if err != nil {
-		logger.Error("redis.CacheDB Hgetall failed:", err, key)
+		logger.Error("redis.CacheDB Hgetall failed: ", err, key)
 		return nil
 	}
 	return result
@@ -252,7 +250,7 @@ func (redisDB *RedisDB) Hmset(field ...interface{}) error {
 	defer c.Close()
 	_, err := c.Do("hmset", field...)
 	if err != nil {
-		logger.Error("redis.CacheDB Hmset failed:", err, field)
+		logger.Error("redis.CacheDB Hmset failed: ", err)
 	}
 	return err
 }
@@ -263,7 +261,7 @@ func (redisDB *RedisDB) Hkeys(key string) []interface{} {
 	defer c.Close()
 	result, err := redis.Values(c.Do("hkeys", key))
 	if err != nil {
-		logger.Error("redis.CacheDB Hkeys error", err, "key:", key)
+		logger.Error("redis.CacheDB Hkeys error: ", err, "key:", key)
 		return nil
 	}
 	return result
@@ -275,7 +273,7 @@ func (redisDB *RedisDB) Hvals(key string) []interface{} {
 	defer c.Close()
 	result, err := redis.Values(c.Do("hvals", key))
 	if err != nil {
-		logger.Error("redis.CacheDB Hvals error", err, "key:", key)
+		logger.Error("redis.CacheDB Hvals error: ", err, "key:", key)
 		return nil
 	}
 	return result
@@ -287,7 +285,7 @@ func (redisDB *RedisDB) Sadd(key string, value interface{}) (err error) {
 	defer c.Close()
 	_, err = c.Do("sadd", key, value)
 	if err != nil {
-		logger.Error("redis.CacheDB Sadd error", err, key, value)
+		logger.Error("redis.CacheDB Sadd error: ", err, key)
 	}
 	return
 }
@@ -298,7 +296,7 @@ func (redisDB *RedisDB) Smembers(key, value interface{}) (reply interface{}, err
 	defer c.Close()
 	reply, err = c.Do("smembers", key, value)
 	if err != nil {
-		logger.Error("redis.CacheDB Sadd error", err, key, value)
+		logger.Error("redis.CacheDB Sadd error: ", err, key)
 	}
 	return
 }
@@ -309,7 +307,7 @@ func (redisDB *RedisDB) Lpush(args ...interface{}) {
 	defer c.Close()
 	_, err := c.Do("lpush", args...)
 	if err != nil {
-		logger.Error("redis.CacheDB Lpush error", err, args)
+		logger.Error("redis.CacheDB Lpush error: ", err, args)
 	}
 }
 
@@ -319,7 +317,7 @@ func (redisDB *RedisDB) Lrange(args ...interface{}) []interface{} {
 	defer c.Close()
 	v, err := redis.Values(c.Do("lrange", args...))
 	if err != nil {
-		logger.Error("redis.CacheDB Lpush error", err, args)
+		logger.Error("redis.CacheDB Lpush error: ", err, args)
 	}
 	return v
 }
@@ -330,7 +328,7 @@ func (redisDB *RedisDB) Llen(key interface{}) int {
 	defer c.Close()
 	v, err := redis.Int(c.Do("llen", key))
 	if err != nil {
-		logger.Error("redis.CacheDB Llen error", err, key)
+		logger.Error("redis.CacheDB Llen error: ", err, key)
 	}
 	return v
 }
@@ -341,7 +339,7 @@ func (redisDB *RedisDB) Zadd(key string, sort int, value interface{}) (err error
 	defer c.Close()
 	_, err = c.Do("zadd", key, sort, value) //写
 	if err != nil {
-		logger.Error("redis.CacheDB set failed:", err, key, sort, value)
+		logger.Error("redis.CacheDB set failed: ", err, key, sort)
 	}
 	return
 }
@@ -352,7 +350,7 @@ func (redisDB *RedisDB) Zcard(key string) (count int, err error) {
 	defer c.Close()
 	count, err = redis.Int(c.Do("zcard", key))
 	if err != nil {
-		logger.Error("redis.CacheDB Zcard failed:", err, key)
+		logger.Error("redis.CacheDB Zcard failed: ", err, key)
 	}
 	return
 }
@@ -363,7 +361,7 @@ func (redisDB *RedisDB) Zrange(key string, start, end interface{}) ([]interface{
 	defer c.Close()
 	values, err := redis.Values(c.Do("zrange", key, start, end, " WITHSCORES"))
 	if err != nil {
-		logger.Error("redis.CacheDB zrange failed:", err, key, start, end)
+		logger.Error("redis.CacheDB zrange failed: ", err, key, start, end)
 	}
 	return values, err
 }
@@ -374,7 +372,7 @@ func (redisDB *RedisDB) Zrevrange(key string, start, end interface{}) ([]interfa
 	defer c.Close()
 	values, err := redis.Values(c.Do("zrevrange", key, start, end))
 	if err != nil {
-		logger.Error("redis.CacheDB Zrevrange failed:", err, key, start, end)
+		logger.Error("redis.CacheDB Zrevrange failed: ", err, key, start, end)
 	}
 	return values, err
 }
@@ -385,7 +383,7 @@ func (redisDB *RedisDB) ZrevrangeStrings(args ...interface{}) []string {
 	defer c.Close()
 	values, err := redis.Strings(c.Do("zrevrange", args...))
 	if err != nil {
-		logger.Error("redis.CacheDB ZrevrangeStrings failed:", err, args)
+		logger.Error("redis.CacheDB ZrevrangeStrings failed: ", err, args)
 	}
 	return values
 }
@@ -396,7 +394,7 @@ func (redisDB *RedisDB) Zrank(args ...interface{}) interface{} {
 	defer c.Close()
 	values, err := c.Do("zrank", args...)
 	if err != nil {
-		logger.Error("redis.CacheDB Zrank failed:", err, args)
+		logger.Error("redis.CacheDB Zrank failed: ", err, args)
 	}
 	return values
 }
@@ -407,7 +405,7 @@ func (redisDB *RedisDB) ZrangeByScore(args ...interface{}) []interface{} {
 	defer c.Close()
 	values, err := redis.Values(c.Do("ZRANGEBYSCORE", args...))
 	if err != nil {
-		logger.Error("redis.CacheDB ZrangeByScore failed:", err, args)
+		logger.Error("redis.CacheDB ZrangeByScore failed: ", err, args)
 	}
 	return values
 }
@@ -418,7 +416,7 @@ func (redisDB *RedisDB) ZrangeByLex(args ...interface{}) []interface{} {
 	defer c.Close()
 	values, err := redis.Values(c.Do("zrangeByLex", args...))
 	if err != nil {
-		logger.Error("redis.CacheDB ZrangeByLex failed:", err, args)
+		logger.Error("redis.CacheDB ZrangeByLex failed: ", err, args)
 	}
 	return values
 }
@@ -429,7 +427,7 @@ func (redisDB *RedisDB) Zunionstore(args ...interface{}) {
 	defer c.Close()
 	_, err := c.Do("zunionstore", args...)
 	if err != nil {
-		logger.Error("redis.CacheDB Zunionstore failed:", err, args)
+		logger.Error("redis.CacheDB Zunionstore failed: ", err, args)
 	}
 }
 
@@ -439,7 +437,7 @@ func (redisDB *RedisDB) Zrem(key string, args ...interface{}) (err error) {
 	defer c.Close()
 	_, err = c.Do("zrem", args...)
 	if err != nil {
-		logger.Error("redis.CacheDB Zrem failed:", err, key, args)
+		logger.Error("redis.CacheDB Zrem failed: ", err, key, args)
 	}
 	return
 }
@@ -450,7 +448,7 @@ func (redisDB *RedisDB) Zdelete(key, member string) error {
 	defer c.Close()
 	_, err := c.Do("zrem", key, member)
 	if err != nil {
-		logger.Error("redis.CacheDB Zdelete failed:", err, key, member)
+		logger.Error("redis.CacheDB Zdelete failed: ", err, key, member)
 	}
 	return err
 }
@@ -461,7 +459,7 @@ func (redisDB *RedisDB) Keys(rex string) []interface{} {
 	defer c.Close()
 	values, err := redis.Values(c.Do("keys", rex))
 	if err != nil {
-		logger.Error("redis.CacheDB Keys failed:", err, rex)
+		logger.Error("redis.CacheDB Keys failed: ", err, rex)
 	}
 	return values
 }
@@ -472,7 +470,7 @@ func (redisDB *RedisDB) Type(key string) string {
 	defer c.Close()
 	values, err := redis.String(c.Do("type", key))
 	if err != nil {
-		logger.Error("redis.CacheDB type failed:", err, key)
+		logger.Error("redis.CacheDB type failed: ", err, key)
 	}
 	return values
 }
@@ -483,7 +481,7 @@ func (redisDB *RedisDB) Incr() int {
 	defer c.Close()
 	maxid, err := redis.Int(c.Do("incr", "maxid"))
 	if err != nil {
-		logger.Error("redis.CacheDB Incr failed:", err)
+		logger.Error("redis.CacheDB Incr failed: ", err)
 	}
 	return maxid
 }
@@ -494,7 +492,7 @@ func (redisDB *RedisDB) Hlen(key string) int {
 	defer c.Close()
 	lens, err := redis.Int(c.Do("hlen", key))
 	if err != nil {
-		logger.Error("redis.CacheDB Hlen failed:", err, key)
+		logger.Error("redis.CacheDB Hlen failed: ", err, key)
 	}
 	return lens
 }
@@ -503,7 +501,7 @@ func (redisDB *RedisDB) Hlen(key string) int {
 func (redisDB *RedisDB) Strings(arg interface{}) []string {
 	value, err := redis.Strings(arg, nil)
 	if err != nil {
-		logger.Error("redis.CacheDB Strings failed:", err, arg)
+		logger.Error("redis.CacheDB Strings failed: ", err, arg)
 		return nil
 	}
 	return value
@@ -513,7 +511,7 @@ func (redisDB *RedisDB) Strings(arg interface{}) []string {
 func (redisDB *RedisDB) Bool(arg interface{}) bool {
 	value, err := redis.Bool(arg, nil)
 	if err != nil {
-		logger.Error("redis.CacheDB Bool failed:", err, arg)
+		logger.Error("redis.CacheDB Bool failed: ", err, arg)
 		return false
 	}
 	return value
@@ -525,7 +523,7 @@ func (redisDB *RedisDB) Expire(key string, time int64) {
 	defer c.Close()
 	_, err := redis.Int(c.Do("Expire", key, time))
 	if err != nil {
-		logger.Error("redis.CacheDB Expire failed:", err, key)
+		logger.Error("redis.CacheDB Expire failed: ", err, key)
 	}
 }
 
@@ -535,7 +533,7 @@ func (redisDB *RedisDB) Exists(key string) (has bool, err error) {
 	defer c.Close()
 	has, err = redis.Bool(c.Do("Exists", key))
 	if err != nil {
-		logger.Error("redis.CacheDB Expire failed:", err, key)
+		logger.Error("redis.CacheDB Expire failed: ", err, key)
 	}
 	return
 }
