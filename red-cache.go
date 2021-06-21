@@ -14,7 +14,7 @@ var (
 	//存储缓存数据加载情况，数据库和缓存数据量一致为真
 	SyncCache = make(map[string]bool)
 	//是否使用缓存
-	UseRedcache = true
+	UseRedcache = false
 	//redis数据库实例，默认是0号
 	redisDb = RedisDB{DBNum: 0}
 )

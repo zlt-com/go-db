@@ -73,29 +73,37 @@ func (m *Database) Count() (count, cacheCount int, err error) {
 	for _, where := range m.whereConditions {
 		db = db.Where(where.ToString(tableName), where.Value)
 	}
-	if SyncCache, err = rcache.GetSyncStatus(); err == nil {
-		if !SyncCache[common.ReflectInterfaceName(m.model)] {
-			if err := db.Model(m.model).Count(&count); err.Error != nil {
-				fmt.Println(err.Error)
-				return 0, 0, err.Error
-			}
-			if cacheCount, err = rcache.Count(); err != nil {
-				return count, cacheCount, err
-			} else {
-				if count == cacheCount {
-					SyncCache[common.ReflectInterfaceName(m.model)] = true
+	if UseRedcache {
+		if SyncCache, err = rcache.GetSyncStatus(); err == nil {
+			if !SyncCache[common.ReflectInterfaceName(m.model)] {
+				if err := db.Model(m.model).Count(&count); err.Error != nil {
+					fmt.Println(err.Error)
+					return 0, 0, err.Error
 				}
-				rcache.SetSyncStatus(SyncCache)
-				return
-			}
+				if cacheCount, err = rcache.Count(); err != nil {
+					return count, cacheCount, err
+				} else {
+					if count == cacheCount {
+						SyncCache[common.ReflectInterfaceName(m.model)] = true
+					}
+					rcache.SetSyncStatus(SyncCache)
+					return
+				}
 
+			} else {
+				cacheCount, err := rcache.Count()
+				rcache.SetSyncStatus(SyncCache)
+				return cacheCount, cacheCount, err
+			}
 		} else {
-			cacheCount, err := rcache.Count()
-			rcache.SetSyncStatus(SyncCache)
-			return cacheCount, cacheCount, err
+			return 0, 0, err
 		}
 	} else {
-		return 0, 0, err
+		if err := db.Model(m.model).Count(&count); err.Error != nil {
+			fmt.Println(err.Error)
+			return 0, 0, err.Error
+		}
+		return count, cacheCount, nil
 	}
 
 }
@@ -106,11 +114,12 @@ func (m *Database) Update(u interface{}) (i interface{}, err error) {
 	if result.Error != nil {
 		return nil, result.Error
 	} else {
-		rcache := new(RedCache).Model(result.Value).Model(u)
-		if err = rcache.Create(); err != nil {
-			return nil, err
+		if UseRedcache {
+			rcache := new(RedCache).Model(result.Value).Model(u)
+			if err = rcache.Create(); err != nil {
+				return nil, err
+			}
 		}
-
 	}
 	return &result.Value, err
 }
@@ -121,19 +130,24 @@ func (m *Database) Create(u interface{}) (i interface{}, err error) {
 	if result.Error != nil {
 		return nil, result.Error
 	}
-	rcache := new(RedCache).Model(result.Value).Model(u)
-	if err = rcache.Create(); err != nil {
-		fmt.Println(err)
+	if UseRedcache {
+		rcache := new(RedCache).Model(result.Value).Model(u)
+		if err = rcache.Create(); err != nil {
+			fmt.Println(err)
+		}
 	}
+
 	return result.Value, err
 }
 
 // Delete Delete
 func (m *Database) Delete(u interface{}) (b bool, err error) {
-	rcache := new(RedCache).Model(u)
-	if err = rcache.Delete(); err != nil {
-		fmt.Println(err)
-		return false, err
+	if UseRedcache {
+		rcache := new(RedCache).Model(u)
+		if err = rcache.Delete(); err != nil {
+			fmt.Println(err)
+			return false, err
+		}
 	}
 	if err := defaultDB.Delete(m); err.Error != nil {
 		fmt.Println(err.Error)
