@@ -198,6 +198,7 @@ func (m *Database) fromDB(x, slice reflect.Value, t reflect.Type) (interface{}, 
 	// db.Order(m.order).Offset(m.offset).Limit(m.limit).Model(m.model).Select("id").Find(x.Interface()).Pluck("id", &ids)
 	// if result := db.Table(tableName).Select("*").Where("id in (?)", ids).Find(x.Interface()); result.Error != nil {
 	// if result := db.Table(tableName).Select("*").Joins(joinSql).Find(x.Interface()); result.Error != nil {
+	// fmt.Println(joinSql)
 	if result := db.Raw(joinSql, whereSlice...).Find(x.Interface()); result.Error != nil {
 		return nil, 0, result.Error
 
