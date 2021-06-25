@@ -2,7 +2,6 @@ package database
 
 import (
 	"bytes"
-	"sync"
 	"time"
 
 	"github.com/garyburd/redigo/redis"
@@ -23,10 +22,10 @@ var (
 func initRedis() {
 	//初始化redis
 	redisClient = &redis.Pool{
-		MaxIdle:         4,
-		MaxActive:       16,
+		MaxIdle:         2,
+		MaxActive:       4,
 		IdleTimeout:     3 * time.Second,
-		MaxConnLifetime: 3 * time.Second,
+		MaxConnLifetime: 10 * time.Second,
 		Wait:            true,
 		Dial: func() (redis.Conn, error) {
 			c, err := redis.Dial(
@@ -52,18 +51,20 @@ func GetRedisDB() *RedisDB {
 }
 
 // connect 连接到Redis数据库
-var lockdb sync.Mutex
+// var lockdb sync.Mutex
 
 func (redisDB *RedisDB) connect() (c redis.Conn) {
-	lockdb.Lock()
-	for {
-		c = redisClient.Get()
-		switch c.(type) {
-		case redis.Conn:
-			lockdb.Unlock()
-			return
-		}
-	}
+	// lockdb.Lock()
+	// for {
+	// 	c = redisClient.Get()
+	// 	switch c.(type) {
+	// 	case redis.Conn:
+	// 		lockdb.Unlock()
+	// 		return
+	// 	}
+	// }
+	c = redisClient.Get()
+	return
 }
 
 // 查看redis信息
@@ -280,12 +281,12 @@ func (redisDB *RedisDB) Hvals(key string) []interface{} {
 }
 
 // Sadd 存储Set型数据
-func (redisDB *RedisDB) Sadd(key string, value interface{}) (err error) {
+func (redisDB *RedisDB) Sadd(value ...interface{}) (err error) {
 	c := redisDB.connect()
 	defer c.Close()
-	_, err = c.Do("sadd", key, value)
+	_, err = c.Do("sadd", value...)
 	if err != nil {
-		logger.Error("redis.CacheDB Sadd error: ", err, key)
+		logger.Error("redis.CacheDB Sadd error: ", err, value)
 	}
 	return
 }
@@ -296,7 +297,7 @@ func (redisDB *RedisDB) Smembers(key, value interface{}) (reply interface{}, err
 	defer c.Close()
 	reply, err = c.Do("smembers", key, value)
 	if err != nil {
-		logger.Error("redis.CacheDB Sadd error: ", err, key)
+		logger.Error("redis.CacheDB Smembers error: ", err, key)
 	}
 	return
 }
@@ -339,7 +340,18 @@ func (redisDB *RedisDB) Zadd(key string, sort int, value interface{}) (err error
 	defer c.Close()
 	_, err = c.Do("zadd", key, sort, value) //写
 	if err != nil {
-		logger.Error("redis.CacheDB set failed: ", err, key, sort)
+		logger.Error("redis.CacheDB Zadd failed: ", err, key, sort)
+	}
+	return
+}
+
+// Zadd 存储sortset型数据
+func (redisDB *RedisDB) Zadds(value ...interface{}) (err error) {
+	c := redisDB.connect()
+	defer c.Close()
+	_, err = c.Do("zadd", value...) //写
+	if err != nil {
+		logger.Error("redis.CacheDB Zadds failed: ", err, value)
 	}
 	return
 }
@@ -533,7 +545,40 @@ func (redisDB *RedisDB) Exists(key string) (has bool, err error) {
 	defer c.Close()
 	has, err = redis.Bool(c.Do("Exists", key))
 	if err != nil {
-		logger.Error("redis.CacheDB Expire failed: ", err, key)
+		logger.Error("redis.CacheDB Exists failed: ", err, key)
+	}
+	return
+}
+
+// Evalsha 执行lua脚本
+func (redisDB *RedisDB) Evalsha(args ...interface{}) (reply interface{}, err error) {
+	c := redisDB.connect()
+	defer c.Close()
+	reply, err = redis.Strings(c.Do("Evalsha", args...))
+	if err != nil {
+		logger.Error("redis.CacheDB Evalsha failed: ", err, args)
+	}
+	return
+}
+
+// ScriptLoad 加载lua脚本
+func (redisDB *RedisDB) ScriptLoad(args interface{}) (reply string, err error) {
+	c := redisDB.connect()
+	defer c.Close()
+	reply, err = redis.String(c.Do("SCRIPT LOAD", args))
+	if err != nil {
+		logger.Error("redis.CacheDB SCRIPT LOAD failed: ", err, args)
+	}
+	return
+}
+
+// ScriptExists 查找lua脚本
+func (redisDB *RedisDB) ScriptExists(args interface{}) (reply bool) {
+	c := redisDB.connect()
+	defer c.Close()
+	reply, err := redis.Bool(c.Do("SCRIPT EXISTS", args))
+	if err != nil {
+		logger.Error("redis.CacheDB Script Exists failed: ", err, args)
 	}
 	return
 }

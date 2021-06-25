@@ -245,5 +245,5 @@ func (m *Database) syncData(rcache *RedCache, x, slice reflect.Value, t reflect.
 
 func timeMeasurement(name string, start time.Time) {
 	// elapsed := time.Since(start)
-	// fmt.Println(name+"--Execution time: %s", elapsed)
+	// fmt.Printf(name+" Execution time: %s。\n", elapsed)
 }

@@ -14,7 +14,7 @@ var (
 	//存储缓存数据加载情况，数据库和缓存数据量一致为真
 	SyncCache = make(map[string]bool)
 	//是否使用缓存
-	UseRedcache = false
+	UseRedcache = true
 	//redis数据库实例，默认是0号
 	redisDb = RedisDB{DBNum: 0}
 )
@@ -286,37 +286,42 @@ func (rc *RedCache) Update() (err error) {
 	return
 }
 
-func (rc *RedCache) BatchCreate(i []interface{}) (err error) {
-	if len(i) == 0 {
+func (rc *RedCache) BatchCreate(m []interface{}) (err error) {
+	if len(m) == 0 {
 		return
 	}
 	defer timeMeasurement("BatchCreate", time.Now())
 	commandArgs := make([]interface{}, 0)
+	// commandIndexArgs := make(map[string][]interface{})
 	instances := make([]interface{}, 0)
-	sfs := make([]*StructField, 0)
-
-	for i, value := range i {
-		sf := getStructField(value)
-		sfs = append(sfs, sf)
+	// sfs := make([]*StructField, 0)
+	sf := getStructField(m[0])
+	// start := time.Now()
+	for i, value := range m {
+		// sfs = append(sfs, sf)
 		if i == 0 {
 			commandArgs = append(commandArgs, sf.TableName)
 		}
 		key := common.ReflectFilde(value, "ID")
-		// commandArgs = append(commandArgs, key, common.Object2JSON(value))
-		if exists, err := redisDb.Hexists(sf.TableName, key); err == nil {
-			if !exists {
-				commandArgs = append(commandArgs, key, common.Object2Byte(value))
-				instances = append(instances, value)
-			}
-		}
+		// if exists, err := redisDb.Hexists(sf.TableName, key); err == nil {
+		// 	if !exists {
+		// 		commandArgs = append(commandArgs, key, common.Object2Byte(value))
+		instances = append(instances, value)
+		// 	}
+		// }
+		commandArgs = append(commandArgs, key, common.Object2Byte(value))
+
 	}
+	// fmt.Printf("for2 Execution time: %s。\n", time.Since(start))
 	if len(commandArgs) > 2 {
 		if err = redisDb.Hmset(commandArgs...); err == nil {
-			for index := 0; index < len(instances); index++ {
-				if err = createIndex(sfs[index], instances[index]); err != nil {
-					return err
-				}
-			}
+			// for index := 0; index < len(instances); index++ {
+			// 	if err = createIndex(sfs[index], instances[index]); err != nil {
+			// 		return err
+			// 	}
+			// }
+			createIndexBatch(instances)
+
 		} else {
 			fmt.Println(commandArgs...)
 		}
@@ -325,43 +330,209 @@ func (rc *RedCache) BatchCreate(i []interface{}) (err error) {
 	return
 }
 
-func createIndex(sf *StructField, i interface{}) (err error) {
-	// defer timeMeasurement("createIndex", time.Now())
-	sf.IndexKv = common.ReflectFildes(i)
-	for k, v := range sf.IndexKv {
-		if k == "id" {
-			if err := redisDb.Zadd(sf.TableName+"_id", v.(int), v); err != nil {
+func createIndexBatch(m []interface{}) (err error) {
+	defer timeMeasurement("createIndexBatch", time.Now())
+	commandArgs := make(map[string][]interface{})
+	// UNIQUE_INDEX, UNION_INDEX, MUILT_INDEX := 0, 0, 0
+	// start := time.Now()
+
+	for l, mv := range m {
+		sf := getStructField(mv)
+		sf.IndexKv = common.ReflectFildes(mv)
+		for k, v := range sf.Index {
+			if k == "id" {
+				// if err := redisDb.Zadd(sf.TableName+"_id", id.(int), id.(int)); err != nil {
+				// 	fmt.Println(err)
+				// }
+				if l == 0 {
+					commandArgs[sf.TableName+"_id"] = append(commandArgs[sf.TableName+"_id"], "ID_INDEX", sf.TableName+"_id", sf.IndexKv["id"], sf.IndexKv["id"])
+				} else {
+					commandArgs[sf.TableName+"_id"] = append(commandArgs[sf.TableName+"_id"], sf.IndexKv["id"], sf.IndexKv["id"])
+				}
+				continue
+			}
+			if tag := sf.Tags[k]; tag != nil {
+				for tk := range tag {
+					switch tk {
+					case "UNIQUE_INDEX":
+						if len(commandArgs[v]) == 0 {
+							commandArgs[v] = append(commandArgs[v], "UNIQUE_INDEX", v, sf.IndexKv["id"], sf.IndexKv["id"])
+						} else {
+							commandArgs[v] = append(commandArgs[v], sf.IndexKv["id"], sf.IndexKv["id"])
+						}
+					case "UNION_INDEX":
+						if len(commandArgs[v]) == 0 {
+							commandArgs[v] = append(commandArgs[v], "UNION_INDEX", v, sf.IndexKv["id"], sf.IndexKv["id"])
+						} else {
+							commandArgs[v] = append(commandArgs[v], sf.IndexKv["id"], sf.IndexKv["id"])
+						}
+					case "MUILT_INDEX":
+						// muiltValue := make([]interface{}, 0)
+						// if ok, _ := redisDb.Hexists(v, sf.IndexKv[k]); ok {
+						// 	if indexV, err := redisDb.Hget(v, sf.IndexKv[k]); err != nil {
+						// 		fmt.Println(err)
+						// 	} else {
+						// 		arry := make([]interface{}, 0)
+						// 		if err := common.Byte2Object(indexV.([]byte), &arry); err != nil {
+						// 			fmt.Println(err)
+						// 			return err
+						// 		} else {
+						// 			muiltValue = append(muiltValue, arry...)
+						// 		}
+						// 	}
+						// }
+						// if !common.Contains(sf.IndexKv["id"], muiltValue) {
+						// 	muiltValue = append(muiltValue, sf.IndexKv["id"])
+						// }
+						// redisDb.Hset(v, v, common.Object2Byte(muiltValue))
+						// if len(commandArgs[v]) == 0 {
+						// 	commandArgs[v] = append(commandArgs[v], "MUILT_INDEX", 1, v, sf.IndexKv[k], common.Object2Byte(muiltValue))
+						// } else {
+						// 	commandArgs[v] = append(commandArgs[v], sf.IndexKv[k], common.Object2Byte(muiltValue))
+						// }
+
+						if len(commandArgs[v]) == 0 {
+							if luaMuiltSha == "" || !redisDb.ScriptExists(luaMuiltSha) {
+								if luaMuiltSha, err = redisDb.ScriptLoad(luaMuilt); err != nil {
+									fmt.Println(err)
+								}
+							}
+							commandArgs[v] = append(commandArgs[v], "MUILT_INDEX", luaMuiltSha, 1, v, sf.IndexKv[k], sf.IndexKv["id"])
+						} else {
+							commandArgs[v] = append(commandArgs[v], sf.IndexKv[k], sf.IndexKv["id"])
+						}
+					}
+					// if tk == "UNIQUE_INDEX" {
+					// 	// if tv == "value" {
+					// 	// 	if exists, err := redisDb.Hexists(sf.Index[k], sf.IndexKv["id"]); err == nil {
+					// 	// 		if !exists {
+					// 	// 			// redisDb.Hset(sf.Index[k], sf.IndexKv["id"], sf.IndexKv["id"])
+					// 	// 			if len(commandArgs[sf.Index[k]]) == 0 {
+					// 	// 				commandArgs[sf.Index[k]] = append(commandArgs[sf.Index[k]], "UNIQUE_INDEX", sf.Index[k], sf.IndexKv["id"], sf.IndexKv["id"])
+					// 	// 			} else {
+					// 	// 				commandArgs[sf.Index[k]] = append(commandArgs[sf.Index[k]], sf.IndexKv["id"], sf.IndexKv["id"])
+					// 	// 			}
+					// 	// 		}
+					// 	// 	}
+					// 	// } else {
+					// 	// 	if exists, err := redisDb.Hexists(sf.Index[k], v); err == nil {
+					// 	// 		if !exists {
+					// 	// 			// redisDb.Hset(sf.Index[k], v, sf.IndexKv["id"])
+					// 	// 			if len(commandArgs[sf.Index[k]]) == 0 {
+					// 	// 				commandArgs[sf.Index[k]] = append(commandArgs[sf.Index[k]], "UNIQUE_INDEX", sf.Index[k], sf.IndexKv["id"], sf.IndexKv["id"])
+					// 	// 			} else {
+					// 	// 				commandArgs[sf.Index[k]] = append(commandArgs[sf.Index[k]], sf.IndexKv["id"], sf.IndexKv["id"])
+					// 	// 			}
+					// 	// 		}
+					// 	// 	}
+					// 	// }
+					// 	if len(commandArgs[v]) == 0 {
+					// 		commandArgs[v] = append(commandArgs[v], "UNIQUE_INDEX", v, sf.IndexKv["id"], sf.IndexKv["id"])
+					// 	} else {
+					// 		commandArgs[v] = append(commandArgs[v], sf.IndexKv["id"], sf.IndexKv["id"])
+					// 	}
+
+					// } else if tk == "UNION_INDEX" {
+					// 	// if exists, err := redisDb.Hexists(v, sf.IndexKv["id"]); err == nil {
+					// 	// 	if !exists {
+					// 	// 		// redisDb.Hset(v, sf.IndexKv["id"], sf.IndexKv["id"])
+					// 	// 		if len(commandArgs[v]) == 0 {
+					// 	// 			commandArgs[v] = append(commandArgs[v], "UNION_INDEX", v, sf.IndexKv["id"], sf.IndexKv["id"])
+					// 	// 		} else {
+					// 	// 			commandArgs[v] = append(commandArgs[v], sf.IndexKv["id"], sf.IndexKv["id"])
+					// 	// 		}
+					// 	// 	}
+					// 	// }
+					// 	if len(commandArgs[v]) == 0 {
+					// 		commandArgs[v] = append(commandArgs[v], "UNION_INDEX", v, sf.IndexKv["id"], sf.IndexKv["id"])
+					// 	} else {
+					// 		commandArgs[v] = append(commandArgs[v], sf.IndexKv["id"], sf.IndexKv["id"])
+					// 	}
+
+					// } else if tk == "MUILT_INDEX" {
+					// 	muiltValue := make([]interface{}, 0)
+					// 	if ok, _ := redisDb.Hexists(v, sf.IndexKv[k]); ok {
+					// 		if indexV, err := redisDb.Hget(v, sf.IndexKv[k]); err != nil {
+					// 			fmt.Println(err)
+					// 		} else {
+					// 			arry := make([]interface{}, 0)
+					// 			if err := common.Byte2Object(indexV.([]byte), &arry); err != nil {
+					// 				fmt.Println(err)
+					// 				return err
+					// 			} else {
+					// 				muiltValue = append(muiltValue, arry...)
+					// 			}
+					// 		}
+					// 	}
+					// 	if !common.Contains(sf.IndexKv["id"], muiltValue) {
+					// 		muiltValue = append(muiltValue, sf.IndexKv["id"])
+					// 	}
+					// 	// redisDb.Hset(v, v, common.Object2Byte(muiltValue))
+					// 	if len(commandArgs[v]) == 0 {
+					// 		commandArgs[v] = append(commandArgs[v], "MUILT_INDEX", v, sf.IndexKv[k], common.Object2Byte(muiltValue))
+					// 	} else {
+					// 		commandArgs[v] = append(commandArgs[v], sf.IndexKv[k], common.Object2Byte(muiltValue))
+					// 	}
+
+					// }
+				}
+			}
+		}
+	}
+	// fmt.Printf("for Execution time: %s。\n", time.Since(start))
+	for _, v := range commandArgs {
+		if v[0] == "MUILT_INDEX" {
+			if _, err := redisDb.Evalsha(v[1:]...); err != nil {
 				fmt.Println(err)
 			}
-			// continue
+		} else {
+			if err := redisDb.Zadds(v[1:]...); err != nil {
+				fmt.Println(v[0:2])
+			}
 		}
+	}
+	return
+}
 
+func createIndex(sf *StructField, i interface{}) (err error) {
+	defer timeMeasurement("createIndex", time.Now())
+	// sf.IndexKv = common.ReflectFildes(i)
+	// fmt.Println(sf.Index)
+	/*IndexKv*/
+	for k, v := range sf.Index {
+		if k == "id" {
+			id := common.ReflectFilde(i, "ID")
+			if err := redisDb.Zadd(sf.TableName+"_id", id.(int), id.(int)); err != nil {
+				fmt.Println(err)
+			}
+			continue
+		}
 		if tag := sf.Tags[k]; tag != nil {
 			for tk, tv := range tag {
 				if tk == "UNIQUE_INDEX" {
 					if tv == "value" {
-						if exists, err := redisDb.Hexists(sf.Index[k], sf.IndexKv["id"]); err == nil {
+						if exists, err := redisDb.Hexists(v, sf.IndexKv["id"]); err == nil {
 							if !exists {
-								redisDb.Hset(sf.Index[k], sf.IndexKv["id"], sf.IndexKv["id"])
+								redisDb.Hset(v, sf.IndexKv["id"], sf.IndexKv["id"])
 							}
 						}
 					} else {
-						if exists, err := redisDb.Hexists(sf.Index[k], v); err == nil {
+						if exists, err := redisDb.Hexists(v, v); err == nil {
 							if !exists {
-								redisDb.Hset(sf.Index[k], v, sf.IndexKv["id"])
+								redisDb.Hset(v, v, sf.IndexKv["id"])
 							}
 						}
 					}
 				} else if tk == "UNION_INDEX" {
-					if exists, err := redisDb.Hexists(sf.Index[k], sf.IndexKv["id"]); err == nil {
+					if exists, err := redisDb.Hexists(v, sf.IndexKv["id"]); err == nil {
 						if !exists {
-							redisDb.Hset(sf.Index[k], sf.IndexKv["id"], sf.IndexKv["id"])
+							redisDb.Hset(v, sf.IndexKv["id"], sf.IndexKv["id"])
 						}
 					}
 				} else if tk == "MUILT_INDEX" {
 					muiltValue := make([]int, 0)
-					if ok, _ := redisDb.Hexists(sf.Index[k], v); ok {
-						if indexV, err := redisDb.Hget(sf.Index[k], v); err != nil {
+					if ok, _ := redisDb.Hexists(v, v); ok {
+						if indexV, err := redisDb.Hget(v, v); err != nil {
 							fmt.Println(err)
 						} else {
 							arry := make([]int, 0)
@@ -377,7 +548,7 @@ func createIndex(sf *StructField, i interface{}) (err error) {
 					if !common.Contains(id, muiltValue) {
 						muiltValue = append(muiltValue, common.ReflectFilde(i, "ID").(int))
 					}
-					redisDb.Hset(sf.Index[k], v, common.Object2Byte(muiltValue))
+					redisDb.Hset(v, v, common.Object2Byte(muiltValue))
 				}
 			}
 		}
@@ -491,3 +662,46 @@ func (rc *RedCache) GetSyncStatus() (status map[string]bool, err error) {
 		return make(map[string]bool), nil
 	}
 }
+
+var luaMuiltSha = ""
+var luaMuilt = `
+function table.unique(t, bArray)
+    local check = {}
+    local n = {}
+    local idx = 1
+    for k, v in pairs(t) do
+        if not check[v] then
+            if bArray then
+                n[idx] = v
+                idx = idx + 1
+            else
+                n[k] = v
+            end
+            check[v] = true
+        end
+    end
+    return n
+end
+
+local key=KEYS[1];
+local args=ARGV
+local result={}
+for i,v in ipairs(args) do
+    if i%2==1 then
+        local redisVal = redis.call("hget",key,v)
+        if not redisVal then
+            local t = {}
+            table.insert(t,args[i+1])
+            redis.call("hset",key,v,cjson.encode(t))
+        else
+            local t = cjson.decode(redisVal)
+            table.insert(t,args[i+1])
+            t = table.unique(t,true)
+            redis.call("hset",key,v,cjson.encode(t))
+        end
+    end
+    
+end
+
+return result
+`
