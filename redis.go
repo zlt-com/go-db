@@ -562,23 +562,10 @@ func (redisDB *RedisDB) Evalsha(args ...interface{}) (reply interface{}, err err
 }
 
 // ScriptLoad 加载lua脚本
-func (redisDB *RedisDB) ScriptLoad(args interface{}) (reply string, err error) {
+func (redisDB *RedisDB) ScriptRun(s string, args ...interface{}) (err error) {
 	c := redisDB.connect()
 	defer c.Close()
-	reply, err = redis.String(c.Do("SCRIPT LOAD", args))
-	if err != nil {
-		logger.Error("redis.CacheDB SCRIPT LOAD failed: ", err, args)
-	}
-	return
-}
-
-// ScriptExists 查找lua脚本
-func (redisDB *RedisDB) ScriptExists(args interface{}) (reply bool) {
-	c := redisDB.connect()
-	defer c.Close()
-	reply, err := redis.Bool(c.Do("SCRIPT EXISTS", args))
-	if err != nil {
-		logger.Error("redis.CacheDB Script Exists failed: ", err, args)
-	}
+	script := redis.NewScript(1, s)
+	err = script.SendHash(c, args...)
 	return
 }

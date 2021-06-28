@@ -22,19 +22,18 @@ local args=ARGV
 local result={}
 for i,v in ipairs(args) do
     if i%2==1 then
-        local redisVal = redis.call("hget",key,v)
+        local redisVal = redis.call('hget',key,v)
         if not redisVal then
             local t = {}
             table.insert(t,args[i+1])
-            redis.call("hset",key,v,cjson.encode(t))
+            redis.call('hset',key,v,cjson.encode(t))
         else
             local t = cjson.decode(redisVal)
             table.insert(t,args[i+1])
             t = table.unique(t,true)
-            redis.call("hset",key,v,cjson.encode(t))
+            redis.call('hset',key,v,cjson.encode(t))
         end
     end
-    
 end
 
 return result
