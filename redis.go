@@ -260,7 +260,7 @@ func (redisDB *RedisDB) Hmset(field ...interface{}) error {
 func (redisDB *RedisDB) Hkeys(key string) []interface{} {
 	c := redisDB.connect()
 	defer c.Close()
-	result, err := redis.Values(c.Do("hkeys", key))
+	result, err := redis.Values(c.Do("hkeys", key+"*"))
 	if err != nil {
 		logger.Error("redis.CacheDB Hkeys error: ", err, "key:", key)
 		return nil
@@ -465,11 +465,22 @@ func (redisDB *RedisDB) Zdelete(key, member string) error {
 	return err
 }
 
+// Zinterstore 多个key的交集
+func (redisDB *RedisDB) Zinterstore(key ...interface{}) error {
+	c := redisClient.Get()
+	defer c.Close()
+	_, err := c.Do("Zinterstore", key...)
+	if err != nil {
+		logger.Error("redis.CacheDB Zdelete failed: ", err, key)
+	}
+	return err
+}
+
 // Keys 获取符合条件的key
-func (redisDB *RedisDB) Keys(rex string) []interface{} {
+func (redisDB *RedisDB) Keys(rex string) []string {
 	c := redisDB.connect()
 	defer c.Close()
-	values, err := redis.Values(c.Do("keys", rex))
+	values, err := redis.Strings(c.Do("keys", rex+"*"))
 	if err != nil {
 		logger.Error("redis.CacheDB Keys failed: ", err, rex)
 	}
@@ -530,7 +541,7 @@ func (redisDB *RedisDB) Bool(arg interface{}) bool {
 }
 
 // Expire 设置 key 的过期时间
-func (redisDB *RedisDB) Expire(key string, time int64) {
+func (redisDB *RedisDB) Expire(key string, time int) {
 	c := redisDB.connect()
 	defer c.Close()
 	_, err := redis.Int(c.Do("Expire", key, time))

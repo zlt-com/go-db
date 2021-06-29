@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-basic/uuid"
 	"github.com/zlt-com/go-common"
 )
 
@@ -16,7 +17,8 @@ var (
 	//是否使用缓存
 	UseRedcache = true
 	//redis数据库实例，默认是0号
-	redisDb = RedisDB{DBNum: 0}
+	redisDb  = RedisDB{DBNum: 0}
+	redisDb1 = RedisDB{DBNum: 1}
 )
 
 type StructField struct {
@@ -163,8 +165,15 @@ func (rc *RedCache) Select() (reply []interface{}, err error) {
 					for _, tv := range tag {
 						if tv == "MUILT_INDEX" {
 							// array := make([]interface{}, 0)
-							if err = common.Byte2Object(indexValue[0].([]byte), &indexValue); err != nil {
-								return nil, err
+							switch v := indexValue[0].(type) {
+							case []byte:
+								if err = common.Byte2Object(v, &indexValue); err != nil {
+									return nil, err
+								}
+							case string:
+								if err = common.Byte2Object([]byte(v), &indexValue); err != nil {
+									return nil, err
+								}
 							}
 						}
 					}
@@ -384,11 +393,11 @@ func createIndexBatch(m []interface{}) (err error) {
 		} else if strings.Contains(v[0].(string), "UNIQUE_INDEX") {
 			if strings.Contains(v[0].(string), "order") {
 				if err := redisDb.Zadds(v[1:]...); err != nil {
-					fmt.Println(v[0:2])
+					fmt.Println(v[0:2], err)
 				}
 			} else {
 				if err := redisDb.Hmset(v[1:]...); err != nil {
-					fmt.Println(v[0:2])
+					fmt.Println(v[0:2], err)
 				}
 			}
 		} else {
@@ -509,37 +518,71 @@ func deleteIndex(sf *StructField) (err error) {
 }
 
 func (rc *RedCache) Count() (count int, err error) {
-	switch value := rc.model.(type) {
-	default:
-		sf := getStructField(value)
-		if rc.where != nil && len(rc.where) > 0 {
-			indexValue := make([]interface{}, 0)
-			for _, whereValue := range rc.where {
-				key := sf.Index[whereValue.Key]
-				if key != "" {
-					if tag := sf.Tags[whereValue.Key]; tag != nil {
-						for _, tv := range tag {
-							if tv == "MUILT_INDEX" {
-								// array := make([]interface{}, 0)
-								if reply, err := redisDb.Hget(key, whereValue); err != nil || reply == nil {
-									return 0, err
-								} else {
-									if err = common.Byte2Object(reply.([]byte), &indexValue); err != nil {
-										return 0, err
-									}
-								}
+	uuid1 := uuid.New()
+	uuid_muilti := uuid.New()
+	Zinterstore := make([]string, 0)
+	zadds := make([]interface{}, 0)
+	sf := getStructField(rc.model)
+	if rc.where != nil && len(rc.where) > 0 {
+		// indexValue := make([]interface{}, 0)
+		for _, whereValue := range rc.where {
+			key := sf.Index[whereValue.Key]
+			if key != "" {
+				if tag := sf.Tags[whereValue.Key]; tag != nil {
+					for _, tv := range tag {
+						if tv == "MUILT_INDEX" {
+							arrayMuilti := make([]interface{}, 0)
+							if reply, err := redisDb.Hget(key, whereValue.Value); err != nil || reply == nil {
+								return 0, err
 							} else {
-								return 1, err
+								if err = common.Byte2Object(reply.([]byte), &arrayMuilti); err != nil {
+									return 0, err
+								}
 							}
+
+							zadds = append(zadds, uuid_muilti)
+							for _, am := range arrayMuilti {
+								zadds = append(zadds, am, am)
+							}
+
+						} else {
+							index := sf.TableName + "_index_" + whereValue.Key + "_" + common.String(whereValue.Value)
+							keys := redisDb.Keys(index)
+							// for _, key := range keys {
+							// 	tp := redisDb.Type(common.String(key))
+							// 	switch tp {
+							// 	case "zset":
+							// 	case "hash":
+							// 	}
+							// }
+							Zinterstore = append(Zinterstore, keys...)
 						}
 					}
 				}
 			}
-			count = len(indexValue)
-		} else {
-			if count, err = redisDb.Zcard(sf.TableName + "_id"); err != nil {
-				fmt.Println(err)
-			}
+		}
+		redisDb.Zadds(zadds...)
+		// redisDb.Expire(uuid_muilti, int(time.Second)*100)
+		Zinterstore = common.RemoveDuplicatesAndEmpty(Zinterstore)
+		unionuuid := uuid.New()
+		Zunioncmd := make([]interface{}, 0)
+		Zunioncmd = append(Zunioncmd, unionuuid, len(Zinterstore))
+		for _, v := range Zinterstore {
+			Zunioncmd = append(Zunioncmd, v)
+		}
+		redisDb.Zunionstore(Zunioncmd...)
+		Zinterstore2 := make([]interface{}, 0)
+		Zinterstore2 = append(Zinterstore2, uuid1, 2, uuid_muilti, unionuuid)
+		redisDb.Zinterstore(Zinterstore2...)
+		// redisDb.Expire(uuid1, int(time.Second)*100)
+		count, err = redisDb.Zcard(uuid1)
+		redisDb.Del(uuid1)
+		redisDb.Del(uuid_muilti)
+		redisDb.Del(unionuuid)
+		return
+	} else {
+		if count, err = redisDb.Zcard(sf.TableName + "_id"); err != nil {
+			fmt.Println(err)
 		}
 	}
 	return

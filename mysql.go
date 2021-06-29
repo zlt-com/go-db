@@ -16,7 +16,7 @@ func initMysql() (mysql *gorm.DB, err error) {
 		logger.Error(err)
 		return
 	}
-	mysql.LogMode(false)
+	mysql.LogMode(config.Config.LogMode)
 	mysql.SetLogger(&logger.MyLogger{})
 	mysql.DB().SetMaxIdleConns(4)
 	mysql.DB().SetMaxOpenConns(16)
