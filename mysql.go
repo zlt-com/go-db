@@ -32,7 +32,3 @@ func Mysql() (mysql *gorm.DB, err error) {
 	}
 	return
 }
-
-func GetIdleConn() (int, int, int, int, int) {
-	return defaultDB.DB().Stats().Idle, defaultDB.DB().Stats().InUse, redisClient.Stats().IdleCount, redisClient.Stats().ActiveCount, redisClient.MaxActive
-}

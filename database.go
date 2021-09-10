@@ -21,12 +21,6 @@ func Open(dbType []string) {
 		}
 
 	}
-
-	if common.Contains("redis", dbType) {
-		fmt.Println("初始化redis")
-		//初始化redis
-		initRedis()
-	}
 }
 
 type Database struct {
@@ -45,14 +39,6 @@ type Condition struct {
 }
 
 func (ct *Condition) ToString(tablename string) string {
-	// switch v := ct.Value.(type) {
-	// case string:
-	// 	return tablename + "." + ct.Key + ct.Op + "'" + v + "'"
-	// case int:
-	// 	return tablename + "." + ct.Key + ct.Op + strconv.Itoa(v)
-	// default:
-	// 	return ""
-	// }
 	return ct.Key + ct.Op + "?"
 }
 
@@ -82,6 +68,7 @@ func (m *Database) Limit(limit interface{}) *Database {
 
 func (m *Database) Where(where interface{}) *Database {
 	c := m.clone()
+	c.where = where
 	switch value := where.(type) {
 	case map[string]interface{}:
 		for key, val := range value {
