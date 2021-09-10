@@ -110,7 +110,7 @@ func (m *Database) Count() (count, cacheCount int, err error) {
 
 // Update Update
 func (m *Database) Update(u interface{}) (i interface{}, err error) {
-	result := defaultDB.Model(u).Update(u)
+	result := defaultDB.Model(m.model).Update(u).Where(m.where)
 	if result.Error != nil {
 		return nil, result.Error
 	} else {
